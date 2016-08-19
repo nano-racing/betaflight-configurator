@@ -29,7 +29,9 @@ var serial = {
                 self.failed = 0;
                 self.openRequested = false;
 
-                self.onReceive.addListener(function log_bytesReceived(info) {
+				console.log("connID", self.connectionId);
+
+				self.onReceive.addListener(function log_bytesReceived(info) {
                     self.bytesReceived += info.data.byteLength;
                 });
 
@@ -115,7 +117,10 @@ var serial = {
 
                 console.log('SERIAL: Connection opened with ID: ' + connectionInfo.connectionId + ', Baud: ' + connectionInfo.bitrate);
 
-                if (callback) callback(connectionInfo);
+				chrome.serial.setControlSignals(self.connectionId, {dtr:false, rts:false}, function(){
+					if (callback) callback(connectionInfo);
+				});
+
             } else if (connectionInfo && self.openCanceled) {
                 // connection opened, but this connect sequence was canceled
                 // we will disconnect without triggering any callbacks

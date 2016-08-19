@@ -3,8 +3,8 @@
     "minimum_chrome_version": "38",
     "version": "1.7.3",
     "author": "Betaflight Squad",
-    "name": "Betaflight - Configurator",
-    "short_name": "Betaflight",
+    "name": "Betaflight Nano - Configurator",
+    "short_name": "Betaflight Nano",
     "description": "Crossplatform configuration tool for Betaflight flight control system",
 
     "offline_enabled": true,

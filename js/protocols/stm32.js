@@ -49,12 +49,112 @@ var STM32_protocol = function () {
     this.useExtendedErase = false;
 };
 
+STM32_protocol.prototype.enterBootloader = function(connectionId, callback)
+{
+	/*
+	var commands = [
+		"$$$",			// enter command mode
+		"U,115K,E\r\n"	// set even parity temporarily and exits command mode
+	];
+
+	commandId = 0;
+	*/
+
+	var bufferOut0 = new ArrayBuffer(3);
+	var bufView0 = new Uint8Array(bufferOut0);
+	bufView0[0] = 36;
+	bufView0[1] = 36;
+	bufView0[2] = 36;
+
+	var bufferOut1 = new ArrayBuffer(10);
+	var bufView1 = new Uint8Array(bufferOut1);
+	bufView1[0] = 85;
+	bufView1[1] = 44;
+	bufView1[2] = 49;
+	bufView1[3] = 49;
+	bufView1[4] = 53;
+	bufView1[5] = 75;
+	bufView1[6] = 44;
+	bufView1[7] = 69;
+	bufView1[8] = 13;
+	bufView1[9] = 10;
+
+	serial.send(bufferOut0, function(){
+		setTimeout(function(){
+			serial.send(bufferOut1, function(){
+				// boot0 high
+				chrome.serial.setControlSignals(connectionId, {dtr:true, rts:false}, function(){
+					// reset low
+					chrome.serial.setControlSignals(connectionId, {dtr:true, rts:true}, function(){
+						setTimeout(function(){
+							// reset high
+							chrome.serial.setControlSignals(connectionId, {dtr:true, rts:false}, function(){
+								callback();
+							});
+						}, 100);
+					});
+				});
+			});
+		}, 100);
+	});
+}
+
+STM32_protocol.prototype.exitBootloader = function(connectionId, callback)
+{
+	/*
+	var commands = [
+		"$$$",			// enter command mode
+		"U,115K,N\r\n"	// back to no parity and exits command mode
+	];
+	 var commandId = 0;
+	 */
+
+	var bufferOut0 = new ArrayBuffer(3);
+	var bufView0 = new Uint8Array(bufferOut0);
+	bufView0[0] = 36;
+	bufView0[1] = 36;
+	bufView0[2] = 36;
+
+	var bufferOut1 = new ArrayBuffer(10);
+	var bufView1 = new Uint8Array(bufferOut1);
+	bufView1[0] = 85;
+	bufView1[1] = 44;
+	bufView1[2] = 49;
+	bufView1[3] = 49;
+	bufView1[4] = 53;
+	bufView1[5] = 78;
+	bufView1[6] = 44;
+	bufView1[7] = 69;
+	bufView1[8] = 13;
+	bufView1[9] = 10;
+
+	serial.send(bufferOut0, function(){
+		setTimeout(function(){
+			serial.send(bufferOut1, function(){
+				// boot0 low
+				chrome.serial.setControlSignals(connectionId, {dtr:false, rts:false}, function(){
+					// reset low
+					chrome.serial.setControlSignals(connectionId, {dtr:false, rts:true}, function(){
+						setTimeout(function(){
+							// reset high
+							chrome.serial.setControlSignals(connectionId, {dtr:false, rts:true}, function(){
+								callback();
+							});
+						}, 100);
+					});
+				});
+			});
+		}, 100);
+	});
+}
+
 // no input parameters
 STM32_protocol.prototype.connect = function (port, baud, hex, options, callback) {
     var self = this;
     self.hex = hex;
     self.baud = baud;
     self.callback = callback;
+	self.connectionId = 0;
 
     // we will crunch the options here since doing it inside initialization routine would be too late
     self.options = {
@@ -74,16 +174,19 @@ STM32_protocol.prototype.connect = function (port, baud, hex, options, callback)
     }
 
     if (self.options.no_reboot) {
-        serial.connect(port, {bitrate: self.baud, parityBit: 'even', stopBits: 'one'}, function (openInfo) {
-            if (openInfo) {
-                // we are connected, disabling connect button in the UI
-                GUI.connect_lock = true;
+		serial.connect(port, {bitrate: self.baud, parityBit: 'even', stopBits: 'one'}, function (openInfo) {
+			if (openInfo) {
+				self.connectionId = openInfo.connectionId;
+				STM32_protocol.prototype.enterBootloader(self.connectionId, function() {
+					// we are connected, disabling connect button in the UI
+					GUI.connect_lock = true;
 
-                self.initialize();
-            } else {
-                GUI.log('<span style="color: red">Failed</span> to open serial port');
-            }
-        });
+					self.initialize();
+				});
+			} else {
+				GUI.log('<span style="color: red">Failed</span> to open serial port');
+			}
+		});
     } else {
         serial.connect(port, {bitrate: self.options.reboot_baud}, function (openInfo) {
             if (openInfo) {
@@ -745,23 +848,25 @@ STM32_protocol.prototype.upload_procedure = function (step) {
             // disconnect
             GUI.interval_remove('STM32_timeout'); // stop STM32 timeout timer (everything is finished now)
 
-            // close connection
-            serial.disconnect(function (result) {
-                PortUsage.reset();
+			STM32_protocol.prototype.exitBootloader(self.connectionId, function() {
+				// close connection
+				serial.disconnect(function (result) {
+					PortUsage.reset();
 
-                // unlocking connect button
-                GUI.connect_lock = false;
+					// unlocking connect button
+					GUI.connect_lock = false;
 
-                // unlock some UI elements TODO needs rework
-                $('select[name="release"]').prop('disabled', false);
+					// unlock some UI elements TODO needs rework
+					$('select[name="release"]').prop('disabled', false);
 
-                // handle timing
-                var timeSpent = new Date().getTime() - self.upload_time_start;
+					// handle timing
+					var timeSpent = new Date().getTime() - self.upload_time_start;
 
-                console.log('Script finished after: ' + (timeSpent / 1000) + ' seconds');
+					console.log('Script finished after: ' + (timeSpent / 1000) + ' seconds');
 
-                if (self.callback) self.callback();
-            });
+					if (self.callback) self.callback();
+				});
+			});
             break;
     }
 };
